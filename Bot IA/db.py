@@ -1,41 +1,46 @@
 import mysql.connector
-from mysql.connector import Error
+from datetime import datetime
 
-# Función para conectar a la base de datos
-def crear_conexion():
+def obtener_conexion():
+    return mysql.connector.connect(
+        host="localhost",
+        user="root",
+        password="",  # Sin contraseña
+        port=3308,  # Puerto de tu MySQL según lo configurado
+        database="bot_ia"  # Nombre correcto de tu base de datos
+    )
+
+def registrar_usuario(nombre):
+    conexion = None  # Inicializamos la variable
     try:
-        connection = mysql.connector.connect(
-            host='localhost',
-            database='bot_ia',
-            user='root',
-            password='',
-            port=3308  # Cambia según tu configuración
-        )
-        return connection
-    except Error as e:
-        print(f"Error al conectar a la base de datos: {e}")
-        return None
+        conexion = obtener_conexion()
+        cursor = conexion.cursor()
+        query = "INSERT INTO usuarios (nombre) VALUES (%s)"
+        cursor.execute(query, (nombre,))
+        conexion.commit()
+        print("Usuario registrado correctamente")
+    except mysql.connector.Error as err:
+        print(f"Error al registrar usuario: {err}")
+    finally:
+        if conexion and conexion.is_connected():
+            conexion.close()
 
-# Función para insertar el nombre en la base de datos
-def insertar_usuario(nombre):
-    connection = crear_conexion()
-    if connection is None:
-        return
-    cursor = connection.cursor()
-    query = "INSERT INTO usuarios_chat (nombre) VALUES (%s)"
-    cursor.execute(query, (nombre,))
-    connection.commit()
-    cursor.close()
-    connection.close()
-
-# Función para insertar el servicio seleccionado en la base de datos
-def insertar_servicio(nombre, area, servicio):
-    connection = crear_conexion()
-    if connection is None:
-        return
-    cursor = connection.cursor()
-    query = "INSERT INTO servicios (nombre, area, servicio) VALUES (%s, %s, %s)"
-    cursor.execute(query, (nombre, area, servicio))
-    connection.commit()
-    cursor.close()
-    connection.close()
+def registrar_servicio(nombre_usuario, area, detalle):
+    conexion = None  # Inicializamos la variable
+    try:
+        conexion = obtener_conexion()
+        cursor = conexion.cursor()
+        # Obtenemos la fecha actual
+        fecha_solicitud = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        query = """
+            INSERT INTO servicios (nombre_usuario, area, detalle, fecha_solicitud)
+            VALUES (%s, %s, %s, %s)
+        """
+        cursor.execute(query, (nombre_usuario, area, detalle, fecha_solicitud))
+        conexion.commit()
+        print("Servicio registrado correctamente")
+    except mysql.connector.Error as err:
+        print(f"Error al registrar servicio: {err}")
+    finally:
+        if conexion and conexion.is_connected():
+            conexion.close()
