@@ -17,7 +17,7 @@ TOKEN = '8080603920:AAGTVZXZASnE-ulJFtUrPnlRULvdZgDGW9w'
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = update.message.text
     if 'estado' not in context.user_data:
-        await update.message.reply_text("👋 ¡Hola! Soy TechFUCS, tu asistente técnico en la FUCS. ¿Cómo te llamas? 🤖")
+        await update.message.reply_text("👋 ¡Hola! Soy AureaBot ϕ, su asistente técnico de la FUCS. ¿Podría indicarme su nombre para continuar? 🤖")
         context.user_data['estado'] = 'esperando_nombre'
 
     elif context.user_data['estado'] == 'esperando_nombre':

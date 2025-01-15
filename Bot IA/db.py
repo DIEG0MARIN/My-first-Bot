@@ -120,4 +120,3 @@ def obtener_tecnicos_disponibles():
 #     registrar_tecnico(nombre_tecnico, telegram_id)
     
     
-
