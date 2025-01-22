@@ -17,7 +17,7 @@ TOKEN = '8080603920:AAGTVZXZASnE-ulJFtUrPnlRULvdZgDGW9w'
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = update.message.text
     if 'estado' not in context.user_data:
-        await update.message.reply_text("👋 ¡Hola! Soy AureaBot ϕ, su asistente técnico de la FUCS. ¿Podría indicarme su nombre para continuar? 🤖")
+        await update.message.reply_text("👋 ¡Hola! Soy Gauss Σ, su asistente técnico de la FUCS. ¿Podría indicarme su nombre para continuar? 🤖")
         context.user_data['estado'] = 'esperando_nombre'
 
     elif context.user_data['estado'] == 'esperando_nombre':
@@ -36,7 +36,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             reply_markup = InlineKeyboardMarkup(keyboard)
 
             await update.message.reply_text(
-                f"Hola, {nombre}. ¿De qué facultad o edificio te comunicas? 💻", 
+                f"Hola, {nombre}. ¿De que edificio te comunicas? 💻", 
                 reply_markup=reply_markup
             )
             context.user_data['estado'] = 'esperando_area'
