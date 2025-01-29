@@ -2,7 +2,9 @@ import logging
 import mysql.connector
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes, CallbackQueryHandler, CommandHandler
-from db import registrar_usuario, registrar_servicio, actualizar_estado_tecnico, obtener_tecnico_disponible, obtener_tecnicos_disponibles, obtener_conexion
+from db import registrar_usuario, registrar_servicio, actualizar_estado_tecnico, obtener_tecnicos_disponibles, obtener_conexion,obtener_id_usuario_del_caso,asignar_caso_a_tecnico,verificar_estado_caso
+from db import registrar_usuario_con_telegram_id
+import random
 
 
 # Configuración del registro
@@ -16,6 +18,22 @@ TOKEN = '8080603920:AAGTVZXZASnE-ulJFtUrPnlRULvdZgDGW9w'
 # Manejar los mensajes
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = update.message.text
+    # Capturar el `telegram_id` del usuario
+    telegram_id = update.message.from_user.id
+    nombre_usuario = update.message.from_user.full_name
+    
+    
+    # Logging para verificar el registro del usuario
+    logging.info(f"Registrando usuario {nombre_usuario} con telegram_id {telegram_id}")
+
+    
+    
+    # Registrar al usuario en la base de datos si no existe
+    registrar_usuario_con_telegram_id(nombre_usuario, telegram_id)
+    
+    
+    text = update.message.text
+
     if 'estado' not in context.user_data:
         await update.message.reply_text("👋 ¡Hola! Soy Gauss Σ, su asistente técnico de la FUCS. ¿Podría indicarme su nombre para continuar? 🤖")
         context.user_data['estado'] = 'esperando_nombre'
@@ -65,38 +83,87 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         detalle_otros = text.strip()
         await update.message.reply_text(f"📋 Gracias por la información. Registramos tu solicitud: {detalle_otros}")
 
+
+     # Registrar el servicio y obtener su ID
+        nombre = context.user_data.get('nombre', 'Desconocido')
+        area = context.user_data.get('area', 'No especificado')
+        detalle_otros = text.strip()
+        servicio_id = registrar_servicio(nombre, area, detalle_otros)  # Esto ahora devuelve el ID del servicio registrado
+
+
+    # Logging para confirmar el registro del servicio
+        logging.info(f"Servicio registrado con ID: {servicio_id} para el usuario {nombre}")
+
+
+
+     # Guardar el ID del servicio en el contexto
+        context.user_data['servicio_id'] = servicio_id
+
+
+
+
         # Mensaje directo al usuario indicando que un especialista se pondrá en contacto
         await update.message.reply_text(
             "🔧 ¡Estamos ajustando nuestras tuercas! Un especialista pronto se pondrá en contacto contigo. Por favor espera... 🤖💻"
         )
 
-        # Registrar el servicio
-        nombre = context.user_data.get('nombre', 'Desconocido')
-        area = context.user_data.get('area', 'No especificado')
-        registrar_servicio(nombre, area, detalle_otros)
+        # Verifica que el servicio se haya registrado correctamente
+        if not servicio_id:
+            await update.message.reply_text("⚠️ Hubo un problema al registrar el servicio. Por favor, intenta nuevamente.")
+            return
+        
+        
+        
 
         # Notificar a los técnicos disponibles
-        tecnicos_disponibles = obtener_tecnicos_disponibles()
-        if tecnicos_disponibles:
-            for tecnico in tecnicos_disponibles:
-                try:
-                    await context.bot.send_message(
-                        chat_id=tecnico['telegram_id'],
-                        text=(
-                            f"🔔 Nueva solicitud de soporte:\n"
-                            f"Usuario: {nombre}\n"
-                            f"Área: {area}\n"
-                            f"Detalles: {detalle_otros}"
-                        )
-                    )
-                except Exception as e:
-                    logging.error(f"Error enviando mensaje al técnico {tecnico['nombre']}: {e}")
-            await update.message.reply_text("✅ Tu solicitud ha sido enviada a los técnicos disponibles.")
-        else:
-            await update.message.reply_text("🚫 No hay técnicos disponibles en este momento. Por favor intenta más tarde.")
+        # Notificar a los técnicos disponibles
+tecnicos_disponibles = obtener_tecnicos_disponibles()
 
-        # Reiniciar el estado del usuario
-        context.user_data.clear()
+if tecnicos_disponibles:
+    tecnico_seleccionado = random.choice(tecnicos_disponibles)  # ✅ Técnico aleatorio
+    
+
+async def asignar_tecnico_automaticamente(context, servicio_id, nombre, area, detalle_otros):
+    """
+    Asigna automáticamente un técnico aleatorio y notifica al usuario y al técnico.
+    """
+    tecnicos_disponibles = obtener_tecnicos_disponibles()
+
+    if tecnicos_disponibles:
+        tecnico_seleccionado = random.choice(tecnicos_disponibles)  # ✅ Selecciona técnico aleatorio
+        
+        # Asigna el caso en la base de datos
+        asignar_caso_a_tecnico(servicio_id, tecnico_seleccionado['id'])
+
+        # Obtener ID de usuario para notificación
+        usuario_id = obtener_id_usuario_del_caso(servicio_id)
+        
+        if usuario_id:
+            await context.bot.send_message(
+                chat_id=usuario_id,
+                text=f"🔧 Tu caso ha sido asignado al técnico {tecnico_seleccionado['nombre']}. Pronto se pondrán en contacto contigo."
+            )
+        
+        # Notificar al técnico asignado
+        await context.bot.send_message(
+            chat_id=tecnico_seleccionado['telegram_id'],
+            text=f"✅ Se te ha asignado un nuevo caso:\n"
+            f"👤 Usuario: {nombre}\n"
+            f"🏢 Área: {area}\n"
+            f"📋 Detalles: {detalle_otros}\n"
+            f"Por favor, contacta al usuario para atender su solicitud."
+        )
+    else:
+        logging.warning("No hay técnicos disponibles en este momento.")
+
+
+
+
+
+
+
+
+
 
 # Manejar botones
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -217,29 +284,39 @@ async def actualizar_disponibilidad(update: Update, context: ContextTypes.DEFAUL
         logging.error(f"Error actualizando disponibilidad: {e}")
         await update.message.reply_text("Ocurrió un error al intentar actualizar tu disponibilidad.")
 
-async def asignar_tecnico(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    try:
-        tecnico = obtener_tecnico_disponible()
-        if not tecnico:
-            await update.message.reply_text("Actualmente no hay técnicos disponibles. Por favor intenta más tarde.")
-            return
 
-        tecnico_asignado = tecnico[0]  # Simplemente asignar el primer técnico disponible
-        mensaje = f"Técnico asignado: {tecnico_asignado['nombre']}\nID Telegram: {tecnico_asignado['telegram_id']}"
-        await update.message.reply_text(mensaje)
+######################################################################################
 
-        # Notificar al técnico
-        tecnico_id = tecnico_asignado['telegram_id']
-        tecnico_message = "Has sido asignado a una nueva solicitud. Por favor verifica los detalles en el sistema."
-        await context.bot.send_message(chat_id=tecnico_id, text=tecnico_message)
+async def manejar_botones_prueba(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    logging.info(f"Callback de prueba recibido: {query.data}")
+    if query.data == "aceptar_prueba":
+        await query.edit_message_text("✅ Has aceptado la prueba.")
+    elif query.data == "rechazar_prueba":
+        await query.edit_message_text("❌ Has rechazado la prueba.")
 
-    except Exception as e:
-        logging.error(f"Error asignando técnico: {e}")
-        await update.message.reply_text("Ocurrió un error al intentar asignar un técnico.")
-        
-        
-      
-        
+    
+    
+    
+async def prueba_botones(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    keyboard = [
+        [InlineKeyboardButton("Aceptar", callback_data="aceptar_prueba")],
+        [InlineKeyboardButton("Rechazar", callback_data="rechazar_prueba")],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    logging.info("Mostrando botones de prueba.")
+    await update.message.reply_text("Presiona un botón:", reply_markup=reply_markup)
+
+
+
+
+
+
+#################################
+
+
+     
 async def verificar_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.message.from_user.id  # Obtiene el ID del usuario
     await update.message.reply_text(f"Tu ID de Telegram es: {user_id}")
@@ -248,11 +325,26 @@ async def verificar_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 # Configuración del bot
 def main() -> None:
     application = ApplicationBuilder().token(TOKEN).build()
+
+    # Handler para mensajes de texto
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    application.add_handler(CallbackQueryHandler(button))
+
+    # Handlers para comandos
     application.add_handler(CommandHandler("estado_disponibilidad", actualizar_disponibilidad))
-    application.add_handler(CommandHandler("asignar_tecnico", asignar_tecnico))
     application.add_handler(CommandHandler("verificar_id", verificar_id))
+    application.add_handler(CommandHandler("prueba_botones", prueba_botones))
+
+    # Handler genérico para otros botones (si fuera necesario)
+    application.add_handler(CallbackQueryHandler(button))
+
+
+
+
+
+
+   
+
+
 
     application.run_polling()
 
